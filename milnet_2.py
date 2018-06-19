@@ -11,8 +11,8 @@ import numpy as np
 #sys.path
 x_train = np.load('/home/louis/SharedWindows/x_train_sort.npy')
 x_test = np.load('/home/louis/SharedWindows/x_test_sort.npy')
-t_train = np.load('/home/louis/SharedWindows/t_train.npy')
-t_test = np.load('/home/louis/SharedWindows/t_test.npy')
+y_train = np.load('/home/louis/SharedWindows/t_train.npy')
+y_test = np.load('/home/louis/SharedWindows/t_test.npy')
 
 embWeights=np.load('/home/louis/SharedWindows/weights.npy')
 idx=np.load('/home/louis/SharedWindows/index.npy')
@@ -51,6 +51,7 @@ filters = 1 #embeddingSize*2
 windowMin = 2
 windowMax = 4
 dimOfSentimentMetrics = 5
+batch_size = 1250
 
 ##
 
@@ -119,13 +120,15 @@ biRnn = GRU(6,  return_sequences=True)(mergedPoolPerDoc)
 newShape = (-1, int(mergedPoolPerDoc.shape[1]), int(mergedPoolPerDoc.shape[2]))
 biRnn = Lambda(lambda x: K.reshape(x,shape=newShape), name ='biRnn_TF_Reminder')(emb)
 
+CONTEXT_DIM = int(int(biRnn.shape[1])*int(biRnn.shape[2])/2) 
+
 eij = Dense(CONTEXT_DIM, use_bias=True, activation='tanh')(biRnn)
 eij = Dense(CONTEXT_DIM, use_bias=False, activation='softmax')(eij)
 
 weighted_input_ = merge([eij, biRnn], mode='dot', dot_axes=1)
 weighted_input = Lambda(lambda x: K.reshape(x,shape=(-1,int(weighted_input_.shape[1])*int(weighted_input_.shape[2]))), name ='attend_output')(weighted_input_)
 
-out = Dense(2, activation='softmax', use_bias=True)(weighted_input)
+out = Dense(1, activation='softmax', use_bias=True)(weighted_input)
 
 # NOT NEEDED
 # CONTEXT_DIM = int(int(biRnn.shape[1])*int(biRnn.shape[2])/2)
@@ -169,8 +172,12 @@ out = Dense(2, activation='softmax', use_bias=True)(weighted_input)
 
 ##
 model = Model(input=[x_in], output=[out])
-model.compile(loss='categorical_crossentropy',
+model.compile(loss='binary_crossentropy',
               optimizer='rmsprop',
               metrics=['accuracy'])
 
 print("Model Build Complete")
+
+##
+print('Train...')
+model.fit(x_train, y_train, batch_size=batch_size, nb_epoch=10,validation_data=(x_test, y_test))
