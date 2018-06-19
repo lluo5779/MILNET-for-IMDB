@@ -116,67 +116,60 @@ for i in range(numSentencesPerDoc):
 #Apply Attention 
 mergedPoolPerDoc = mergedPoolForSentence = Concatenate(axis = 1)(maxPooledPerDoc)
 biRnn = GRU(6,  return_sequences=True)(mergedPoolPerDoc)
-##
-CONTEXT_DIM = -1
+newShape = (-1, int(mergedPoolPerDoc.shape[1]), int(mergedPoolPerDoc.shape[2]))
+biRnn = Lambda(lambda x: K.reshape(x,shape=newShape), name ='biRnn_TF_Reminder')(emb)
 
-class AttLayer(Layer):
-    def __init__(self, regularizer=None, **kwargs):
-        self.regularizer = regularizer
-        self.supports_masking = True
-        super(AttLayer, self).__init__(**kwargs)
+eij = Dense(CONTEXT_DIM, use_bias=True, activation='tanh')(biRnn)
+eij = Dense(CONTEXT_DIM, use_bias=False, activation='softmax')(eij)
 
-    def build(self, input_shape):
-        assert len(input_shape) == 3        
-        self.W = self.add_weight(name='W', shape=(input_shape[-1], CONTEXT_DIM), initializer='normal', trainable=True, 
-                                 regularizer=self.regularizer)
-        self.b = self.add_weight(name='b', shape=(CONTEXT_DIM,), initializer='normal', trainable=True, 
-                                 regularizer=self.regularizer)
-        self.u = self.add_weight(name='u', shape=(CONTEXT_DIM,), initializer='normal', trainable=True, 
-                                 regularizer=self.regularizer)        
-        super(AttLayer, self).build(input_shape)  # be sure you call this somewhere!
+weighted_input_ = merge([eij, biRnn], mode='dot', dot_axes=1)
+weighted_input = Lambda(lambda x: K.reshape(x,shape=(-1,int(weighted_input_.shape[1])*int(weighted_input_.shape[2]))), name ='attend_output')(weighted_input_)
 
-    def call(self, x, mask=None):
-        eij = K.dot(K.tanh(K.dot(x, self.W) + self.b), K.expand_dims(self.u))
-        ai = K.exp(eij)
-        alphas = ai / K.sum(ai, axis=1)
-        if mask is not None:
-            # use only the inputs specified by the mask
-            alphas *= K.expand_dims(mask)
-        weighted_input = K.dot(K.transpose(x), alphas)
-        return K.reshape(weighted_input, (weighted_input.shape[0],))
+out = Dense(2, activation='softmax', use_bias=True)(weighted_input)
 
-    def compute_output_shape(self, input_shape):
-        return (input_shape[0], input_shape[-1])
-    
-    def get_config(self):
-        config = {}
-        base_config = super(AttLayer, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
-    def compute_mask(self, inputs, mask):
-        return None
-
-##
-# merged = Concatenate(axis=1)(maxOverTime)
-# merged = Lambda(lambda x: K.squeeze(x, 2))(merged)
+# NOT NEEDED
+# CONTEXT_DIM = int(int(biRnn.shape[1])*int(biRnn.shape[2])/2)
 # 
-# dimOfSentimentMetrics = int(merged.shape[1])
-# sentenceSentiment = Dense(dimOfSentimentMetrics, activation = 'softmax', use_bias=True)(merged)
-# newShape = (numSentencesPerDoc, dimOfSentimentMetrics,1)
-# sentenceSentiment = Lambda(lambda x: K.reshape(x,shape= newShape), name ='Extra_dim_for_attention')(sentenceSentiment)
+# class AttLayer(Layer):
+#     def __init__(self, regularizer=None, **kwargs):
+#         self.regularizer = regularizer
+#         self.supports_masking = True
+#         super(AttLayer, self).__init__(**kwargs)
+# 
+#     def build(self, input_shape):
+#         assert len(input_shape) == 3        
+#         self.W = self.add_weight(name='W', shape=(input_shape[-1], CONTEXT_DIM), initializer='normal', trainable=True, 
+#                                  regularizer=self.regularizer)
+#         self.b = self.add_weight(name='b', shape=(CONTEXT_DIM,), initializer='normal', trainable=True, 
+#                                  regularizer=self.regularizer)
+#         self.u = self.add_weight(name='u', shape=(CONTEXT_DIM,), initializer='normal', trainable=True, 
+#                                  regularizer=self.regularizer)        
+#         super(AttLayer, self).build(input_shape)  # be sure you call this somewhere!
+# 
+#     def call(self, x, mask=None):
+#         eij = K.dot(K.tanh(K.dot(x, self.W) + self.b), K.expand_dims(self.u))
+#         ai = K.exp(eij)
+#         alphas = ai / K.sum(ai, axis=1)
+#         if mask is not None:
+#             # use only the inputs specified by the mask
+#             alphas *= K.expand_dims(mask)
+#         weighted_input = K.dot(K.transpose(x), alphas)
+#         return K.reshape(weighted_input, (weighted_input.shape[0],))
+# 
+#     def compute_output_shape(self, input_shape):
+#         return (input_shape[0], input_shape[-1])
+#     
+#     def get_config(self):
+#         config = {}
+#         base_config = super(AttLayer, self).get_config()
+#         return dict(list(base_config.items()) + list(config.items()))
+# 
+#     def compute_mask(self, inputs, mask):
+#         return None
 
-biRnn = Bidirectional(GRU(12), merge_mode = 'concat')(sentenceSentiment)
-hi_prime = Dense(dimOfSentimentMetrics, activation='tanh', use_bias=True)(biRnn)
-hi_prime = Dense(dimOfSentimentMetrics, use_bias=False)(hi_prime)
-
-#transposed = Lambda(lambda x: K.transpose(x), name='transpose')(hi_prime)
-attended = Dot(axes=1)([hi_prime,sentenceSentiment])
-newShape = (1,1,numSentencesPerDoc)
-flattened = Lambda(lambda x: K.reshape(x, shape = newShape))(attended)
-out = Dense(1, activation='softmax')(flattened)
-
+##
 model = Model(input=[x_in], output=[out])
-model.compile(loss='binary_crossentropy',
+model.compile(loss='categorical_crossentropy',
               optimizer='rmsprop',
               metrics=['accuracy'])
 
