@@ -1,9 +1,3 @@
-import sys, os
-sys.path.append(os.pardir)
-
-os.environ["KERAS_BACKEND"]='tensorflow'
-#import glob
-import numpy as np
 #from multiprocessing import Pool
 #import multiprocessing as multi
 #from data.func import load_npy, padding_mat
@@ -19,6 +13,15 @@ idx=np.load('/home/louis/SharedWindows/index.npy')
 embWeights = embWeights[idx]
 
 print('data loaded')
+
+##
+import sys, os
+sys.path.append(os.pardir)
+
+os.environ["KERAS_BACKEND"]='tensorflow'
+#import glob
+import numpy as np
+
 import keras
 from keras.layers import Input, merge
 from keras.models import Model
@@ -37,6 +40,8 @@ from keras.layers.wrappers import Bidirectional, TimeDistributed
 from keras.layers.core import Dropout, Dense, Lambda, Masking
 from keras.layers import merge, Layer, Activation, Dot, Concatenate, Flatten, Lambda
 
+from keras.utils import plot_model
+
 
 
 numSentencesPerDoc, numWordsPerSentence = x_train[0].shape[0], x_train[0].shape[1]
@@ -51,7 +56,7 @@ recursiveClass = GRU
 
 filters = 1 #embeddingSize*2
 windowMin = 2
-windowMax = 4
+windowMax = 8
 dimOfSentimentMetrics = 5
 batch_size = 1250
 
@@ -90,37 +95,31 @@ for windowSize in range(windowMin,windowMax):
 for i in range(numSentencesPerDoc):
     maxPooledPerSentence = []
     for j in range(windowMax-windowMin):   
-        x_pop = Lambda(lambda x: x[:,i], output_shape=(numWordsPerSentence, ) , name='convert_shape'+str(i+1) )( x_in )
+        x_pop = Lambda(lambda x: x[:,i], output_shape=(numWordsPerSentence, ) , name='convert_shape_'+'sentence'+str(i+1)+'windowSize'+str(j+windowMin) )( x_in )
         emb = embLayer(x_pop)
-        newShape = (-1,int(emb.shape[1]),int(emb.shape[2]),1)
-        reshaped = Lambda(lambda x: K.reshape(x,shape=newShape), name ='Extra_dim_for_convo')(emb)
+        #newShape = (-1,int(emb.shape[1]),int(emb.shape[2]),1)
+        reshaped = Lambda(lambda x: K.expand_dims(x), name ='Extra_dim_for_convo_'+'sentence'+str(i+1)+'windowSize'+str(j+windowMin))(emb)
         wordsCNN  = convNets[j](reshaped)
         #print(wordsCNN.shape)
         # wordsCNN = Flatten()(wordsCNN)
     
         squeezed = Lambda(lambda x: K.squeeze(x, 3))(wordsCNN)#K.squeeze(wordsCNN, 3)
         #print(squeezed)
-    
         wordsCNNPooled= MaxPooling1D(pool_size = int(squeezed.shape[1]), padding='valid')(squeezed)
-        #print(wordsCNNPooled.shape)
-        #squeezed2 = Lambda(lambda x: K.squeeze(x, 2))(wordsCNNPooled)
-        #print(squeezed2.shape)
-    
-    
         maxPooledPerSentence.append(wordsCNNPooled)
         
     mergedPoolForSentence = Concatenate(axis = 1)(maxPooledPerSentence)
     newShape=(-1,1,int(mergedPoolForSentence.shape[1]))
-    mergedPoolForSentence = Lambda(lambda x: K.reshape(x,shape=newShape), name ='switch_axis_for_Dense')(mergedPoolForSentence)
+    mergedPoolForSentence = Lambda(lambda x: K.reshape(x,shape=newShape), name ='switch_axis_for_Dense_'+'sentence'+str(i+1)+'windowSize'+str(j+windowMin))(mergedPoolForSentence)
     mergedPoolForSentence = Dropout(0.5)(Dense(6, activation='softmax', use_bias=True)(mergedPoolForSentence))
 
     maxPooledPerDoc.append(mergedPoolForSentence)
     
 #Apply Attention 
-mergedPoolPerDoc = mergedPoolForSentence = Concatenate(axis = 1)(maxPooledPerDoc)
+mergedPoolPerDoc = Concatenate(axis = 1)(maxPooledPerDoc)
 biRnn = GRU(6,  return_sequences=True)(mergedPoolPerDoc)
 newShape = (-1, int(mergedPoolPerDoc.shape[1]), int(mergedPoolPerDoc.shape[2]))
-biRnn = Lambda(lambda x: K.reshape(x,shape=newShape), name ='biRnn_TF_Reminder')(emb)
+biRnn = Lambda(lambda x: K.reshape(x,shape=newShape), name ='biRnn_TF_Reminder')(biRnn)
 
 CONTEXT_DIM = int(int(biRnn.shape[1])*int(biRnn.shape[2])/10) 
 
@@ -132,45 +131,6 @@ weighted_input = Lambda(lambda x: K.reshape(x,shape=(-1,int(weighted_input_.shap
 
 out = Dense(1, activation='softmax', use_bias=True)(weighted_input)
 
-# NOT NEEDED
-# CONTEXT_DIM = int(int(biRnn.shape[1])*int(biRnn.shape[2])/2)
-# 
-# class AttLayer(Layer):
-#     def __init__(self, regularizer=None, **kwargs):
-#         self.regularizer = regularizer
-#         self.supports_masking = True
-#         super(AttLayer, self).__init__(**kwargs)
-# 
-#     def build(self, input_shape):
-#         assert len(input_shape) == 3        
-#         self.W = self.add_weight(name='W', shape=(input_shape[-1], CONTEXT_DIM), initializer='normal', trainable=True, 
-#                                  regularizer=self.regularizer)
-#         self.b = self.add_weight(name='b', shape=(CONTEXT_DIM,), initializer='normal', trainable=True, 
-#                                  regularizer=self.regularizer)
-#         self.u = self.add_weight(name='u', shape=(CONTEXT_DIM,), initializer='normal', trainable=True, 
-#                                  regularizer=self.regularizer)        
-#         super(AttLayer, self).build(input_shape)  # be sure you call this somewhere!
-# 
-#     def call(self, x, mask=None):
-#         eij = K.dot(K.tanh(K.dot(x, self.W) + self.b), K.expand_dims(self.u))
-#         ai = K.exp(eij)
-#         alphas = ai / K.sum(ai, axis=1)
-#         if mask is not None:
-#             # use only the inputs specified by the mask
-#             alphas *= K.expand_dims(mask)
-#         weighted_input = K.dot(K.transpose(x), alphas)
-#         return K.reshape(weighted_input, (weighted_input.shape[0],))
-# 
-#     def compute_output_shape(self, input_shape):
-#         return (input_shape[0], input_shape[-1])
-#     
-#     def get_config(self):
-#         config = {}
-#         base_config = super(AttLayer, self).get_config()
-#         return dict(list(base_config.items()) + list(config.items()))
-# 
-#     def compute_mask(self, inputs, mask):
-#         return None
 
 ##
 model = Model(input=[x_in], output=[out])
@@ -179,6 +139,15 @@ model.compile(loss='binary_crossentropy',
               metrics=['accuracy'])
 
 print("Model Build Complete")
+##
+#save model to png file
+from keras.utils import plot_model
+plot_model( model, to_file='model.png' )
+
+#モデルを保存せず直接可視化
+from IPython.display import SVG
+from keras.utils.vis_utils import model_to_dot
+SVG( model_to_dot( model ).create( prog='dot', format='svg' ) )
 
 ##
 print('Train...')
