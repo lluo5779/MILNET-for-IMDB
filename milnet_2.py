@@ -82,8 +82,12 @@ embLayer = Embedding( input_dim=embWeights.shape[0], output_dim=embWeights.shape
 
 maxPooledPerDoc = []
 convNets = []
+maxPools = []
 
 filters = 1
+
+extraDimLayer = Lambda(lambda x: K.expand_dims(x), name ='Extra_dim_for_convo')
+squeezeThirdLayer = Lambda(lambda x: K.squeeze(x, 3))
 
 for windowSize in range(windowMin,windowMax):
     name='word_mat_convo'+str(windowSize)
@@ -92,20 +96,23 @@ for windowSize in range(windowMin,windowMax):
                            name=name)
     convNets.append(convNet)
     
+    maxPool = MaxPooling1D(pool_size = int(numWordsPerSentence-windowSize-1), padding='valid')
+    maxPools.append(maxPool)
+    
 for i in range(numSentencesPerDoc):
     maxPooledPerSentence = []
+    x_pop = Lambda(lambda x: x[:,i], output_shape=(numWordsPerSentence, ) , name='convert_shape_'+'sentence'+str(i+1))( x_in )
+    emb = embLayer(x_pop)
+    reshaped = extraDimLayer(emb)
     for j in range(windowMax-windowMin):   
-        x_pop = Lambda(lambda x: x[:,i], output_shape=(numWordsPerSentence, ) , name='convert_shape_'+'sentence'+str(i+1)+'windowSize'+str(j+windowMin) )( x_in )
-        emb = embLayer(x_pop)
-        #newShape = (-1,int(emb.shape[1]),int(emb.shape[2]),1)
-        reshaped = Lambda(lambda x: K.expand_dims(x), name ='Extra_dim_for_convo_'+'sentence'+str(i+1)+'windowSize'+str(j+windowMin))(emb)
         wordsCNN  = convNets[j](reshaped)
         #print(wordsCNN.shape)
         # wordsCNN = Flatten()(wordsCNN)
     
-        squeezed = Lambda(lambda x: K.squeeze(x, 3))(wordsCNN)#K.squeeze(wordsCNN, 3)
+        squeezed = squeezeThirdLayer(wordsCNN)#K.squeeze(wordsCNN, 3)
         #print(squeezed)
-        wordsCNNPooled= MaxPooling1D(pool_size = int(squeezed.shape[1]), padding='valid')(squeezed)
+        wordsCNNPooled= maxPools[j](squeezed)
+        #wordsCNNPooled= MaxPooling1D(pool_size = int(squeezed.shape[1]), padding='valid')(squeezed)
         maxPooledPerSentence.append(wordsCNNPooled)
         
     mergedPoolForSentence = Concatenate(axis = 1)(maxPooledPerSentence)
