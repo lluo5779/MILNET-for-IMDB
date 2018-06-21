@@ -67,6 +67,8 @@ windowMax = 7
 # dimOfSentimentMetrics = 5
 batch_size = 256
 epochs = 25
+numGRU = 100
+numDensePool=50
 
 ##
 
@@ -105,13 +107,13 @@ for i in range(numSentencesPerDoc):
 
     for j in range(windowMax-windowMin):   
         emb = embLayer(x_pop)
-        reshaped = Lambda(lambda x: K.expand_dims(x), name='extraDimForConvo_'+str(j)+'_sentence_'+str(i))(emb)
+        reshaped = extraDimLayer(emb)#Lambda(lambda x: K.expand_dims(x), name='extraDimForConvo_'+str(j)+'_sentence_'+str(i))(emb)
         name='word_mat_convo_win_size_'+str(j)+'_sentence_'+str(i)
-        wordsCNN = Conv2D(filters, kernel_size=(windowSize,embeddingSize), padding='valid', 
-                           activation='relu', strides=1, use_bias=True, input_shape=(numWordsPerSentence, embeddingSize, 1), data_format="channels_last",
-                           kernel_initializer=glorot_normal(),kernel_regularizer=regularizers.l2(),name=name)(reshaped)
-        # wordsCNN  = convNets[j](reshaped)
-        squeezed = Lambda(lambda x: K.squeeze(x, 3), name='squeezeThirdLayer_'+str(j)+'_sentence_'+str(i))(wordsCNN)
+        # wordsCNN = Conv2D(filters, kernel_size=(windowSize,embeddingSize), padding='valid', 
+        #                    activation='relu', strides=1, use_bias=True, input_shape=(numWordsPerSentence, embeddingSize, 1), data_format="channels_last",
+        #                    kernel_initializer=glorot_normal(),kernel_regularizer=regularizers.l2(),name=name)(reshaped)
+        wordsCNN  = convNets[j](reshaped)
+        squeezed = squeezeThirdLayer(wordsCNN)#Lambda(lambda x: K.squeeze(x, 3), name='squeezeThirdLayer_'+str(j)+'_sentence_'+str(i))(wordsCNN)
         # newShape = (-1, int(squeezed.shape[1])*int(squeezed.shape[2]))
         # squeezed = Lambda(lambda x: K.reshape(x,shape=newShape), name ='squeezeDimForMaxPool'+str(i)+str(j))(squeezed)
         wordsCNNPooled=GlobalMaxPooling1D()(squeezed)
@@ -121,7 +123,7 @@ for i in range(numSentencesPerDoc):
     mergedPoolForSentence = Concatenate(axis = 1)(maxPooledPerSentence)
     newShape=(-1,1,int(mergedPoolForSentence.shape[1]))
     reshapedPoolForSentence = Lambda(lambda x: K.reshape(x,shape=newShape), name ='switch_axis_'+'sentence'+str(i+1)+'winSize'+str(j+windowMin))(mergedPoolForSentence)
-    densePoolForSentence = Dense(10, activation='softmax', use_bias=True)(reshapedPoolForSentence)
+    densePoolForSentence = Dense(numDensePool, activation='softmax', use_bias=True)(reshapedPoolForSentence)
 
     maxPooledPerDoc.append(densePoolForSentence)
     
@@ -132,7 +134,7 @@ out_avg = Dense(1, activation='softmax', use_bias=True)(averaged)
     
 #Apply Attention 
 mergedPoolPerDoc = Concatenate(axis = 1)(maxPooledPerDoc)
-biRnn_ = Bidirectional(GRU(6,  return_sequences=True), merge_mode='concat')(mergedPoolPerDoc)
+biRnn_ = Bidirectional(GRU(numGRU,  return_sequences=True), merge_mode='concat')(mergedPoolPerDoc)
 newShape = (-1, int(mergedPoolPerDoc.shape[1]), 2*int(mergedPoolPerDoc.shape[2]))
 biRnn = Lambda(lambda x: K.reshape(x,shape=newShape), name ='biRnn_TF_Reminder')(biRnn_)
 
@@ -172,14 +174,14 @@ print("Average Model Build Complete")
 ##
 #save model to png file
 from keras.utils import plot_model
-plot_model( model_avg, to_file='model.png' )
+plot_model( model, to_file='model.png' )
 
 #モデルを保存せず直接可視化
 from IPython.display import SVG
 from keras.utils.vis_utils import model_to_dot
-SVG( model_to_dot( model_avg ).create( prog='dot', format='svg' ) )
+SVG( model_to_dot( model ).create( prog='dot', format='svg' ) )
 
 ##
 print('Train...')
 history = model_avg.fit(x_train, y_train, batch_size = batch_size, verbose=1, epochs=epochs
-                    ,validation_split=0.2, shuffle=True)
+                    ,validation_split=0.5, shuffle=True)
