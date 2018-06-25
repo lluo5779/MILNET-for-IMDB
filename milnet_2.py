@@ -69,6 +69,7 @@ batch_size = 256
 epochs = 25
 numGRU = 100
 numDensePool=50
+dr= 0.5
 
 ##
 
@@ -107,12 +108,14 @@ for i in range(numSentencesPerDoc):
 
     for j in range(windowMax-windowMin):   
         emb = embLayer(x_pop)
+        emb = Dropout(dr)(emb)
         reshaped = extraDimLayer(emb)#Lambda(lambda x: K.expand_dims(x), name='extraDimForConvo_'+str(j)+'_sentence_'+str(i))(emb)
         name='word_mat_convo_win_size_'+str(j)+'_sentence_'+str(i)
         # wordsCNN = Conv2D(filters, kernel_size=(windowSize,embeddingSize), padding='valid', 
         #                    activation='relu', strides=1, use_bias=True, input_shape=(numWordsPerSentence, embeddingSize, 1), data_format="channels_last",
         #                    kernel_initializer=glorot_normal(),kernel_regularizer=regularizers.l2(),name=name)(reshaped)
         wordsCNN  = convNets[j](reshaped)
+        wordsCNN=Dropout(dr)(wordsCNN)
         squeezed = squeezeThirdLayer(wordsCNN)#Lambda(lambda x: K.squeeze(x, 3), name='squeezeThirdLayer_'+str(j)+'_sentence_'+str(i))(wordsCNN)
         # newShape = (-1, int(squeezed.shape[1])*int(squeezed.shape[2]))
         # squeezed = Lambda(lambda x: K.reshape(x,shape=newShape), name ='squeezeDimForMaxPool'+str(i)+str(j))(squeezed)
@@ -130,28 +133,29 @@ for i in range(numSentencesPerDoc):
 #Naive Approach
 averaged = Average()(maxPooledPerDoc) 
 averaged = Lambda(lambda x:K.reshape(x,shape=(-1,int(averaged.shape[1])*int(averaged.shape[2]))), name ='attend_output')(averaged)
-out_avg = Dense(1, activation='softmax', use_bias=True)(averaged) 
+out_avg = Dense(1, activation='sigmoid', use_bias=True)(averaged) 
     
 #Apply Attention 
 mergedPoolPerDoc = Concatenate(axis = 1)(maxPooledPerDoc)
-biRnn_ = Bidirectional(GRU(numGRU,  return_sequences=True), merge_mode='concat')(mergedPoolPerDoc)
+biRnn_ = Bidirectional(GRU(int(mergedPoolPerDoc.shape[2]),  return_sequences=True), merge_mode='concat')(mergedPoolPerDoc)
 newShape = (-1, int(mergedPoolPerDoc.shape[1]), 2*int(mergedPoolPerDoc.shape[2]))
 biRnn = Lambda(lambda x: K.reshape(x,shape=newShape), name ='biRnn_TF_Reminder')(biRnn_)
 
-CONTEXT_DIM = int(int(biRnn.shape[1])*int(biRnn.shape[2])/2) 
+CONTEXT_DIM = 100#int(int(biRnn.shape[1])*int(biRnn.shape[2])/2) 
 
 eij = Dense(CONTEXT_DIM, use_bias=True, activation='tanh')(biRnn)
 eij = Dense(CONTEXT_DIM, use_bias=False, activation='softmax')(eij)
 
-weighted_input_ = merge([eij, biRnn], mode='dot', dot_axes=1)
+weighted_input_ = Dot(axes = 1)([eij, biRnn])
 weighted_input = Lambda(lambda x: K.reshape(x,shape=(-1,int(weighted_input_.shape[1])*int(weighted_input_.shape[2]))), name ='attend_output')(weighted_input_)
 
-out = Dense(1, activation='softmax', use_bias=True)(weighted_input)
+out = Dense(1, activation='sigmoid', use_bias=True)(weighted_input)
 
-# mergedPoolPerDoc = Average()
+
 
 
 ##
+
 model = Model(input=[x_in], output=[out])
 # adadelta = keras.optimizers.Adadelta(lr=0.5, rho=0.95, epsilon=None, decay=0.0)
 # model.compile(loss='binary_crossentropy',
@@ -159,16 +163,15 @@ model = Model(input=[x_in], output=[out])
 #               metrics=['accuracy'])
               
 model.compile(loss='binary_crossentropy',
-              optimizer=keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0),
+              optimizer=keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.99, epsilon=1e-08, decay=0.0),
               metrics=['accuracy'])
 
-print("Model Build Complete")
+print("Attention Model Build Complete")
 ##
-model_avg = Model(input=[x_in], output=[out_avg])
+model_avg = Model(inputs=[x_in], outputs=[out_avg])
 model_avg.compile(loss='binary_crossentropy',
               optimizer=keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0),
-              metrics=['mae', 
-              'binary_accuracy'])
+              metrics=['accuracy'])
 
 print("Average Model Build Complete")
 ##
@@ -183,5 +186,8 @@ SVG( model_to_dot( model ).create( prog='dot', format='svg' ) )
 
 ##
 print('Train...')
-history = model_avg.fit(x_train, y_train, batch_size = batch_size, verbose=1, epochs=epochs
-                    ,validation_split=0.5, shuffle=True)
+history = model.fit(x_train, y_train, batch_size = batch_size, verbose=1, epochs=epochs
+                    ,validation_split=0.2, shuffle=True)
+                    
+                    
+                    
