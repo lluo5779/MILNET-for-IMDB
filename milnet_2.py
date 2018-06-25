@@ -1,16 +1,19 @@
+'''
+Model: Multiple Instance Learning Network
+Data: IMDB data from http://ai.stanford.edu/~amaas/data/sentiment/ 
+Embedding Weights: GLOVE from http://nlp.stanford.edu/data/glove.6B.zip
+
+Author: Yiqing (Louis) Luo
+Reference: Angelidis and Lapata 2017 ACL Conference
+'''
+
+## Data Loading
 import sys, os
 sys.path.append(os.pardir)
 
 os.environ["KERAS_BACKEND"]='tensorflow'
-#import glob
 import numpy as np
 
-
-#from multiprocessing import Pool
-#import multiprocessing as multi
-#from data.func import load_npy, padding_mat
-#sys.path.append('C:\\ProgramData\\Anaconda3\\pkgs\\pydot-1.2.3-py36hd4f83f9_0\\Lib\\site-packages')
-#sys.path
 x_train = np.load('/home/louis/SharedWindows/x_train_sort.npy')
 x_test = np.load('/home/louis/SharedWindows/x_test_sort.npy')
 y_train = np.load('/home/louis/SharedWindows/t_train.npy')
@@ -22,67 +25,48 @@ embWeights = embWeights[idx]
 
 print('data loaded')
 
-##
+## Import and Initialization
 
-import keras
 from keras.layers import Input, merge
 from keras.models import Model
-from keras.models import Sequential
 from keras.layers import Dense, Activation, Dropout
-from keras.layers import Embedding
 from keras.layers import LSTM
 import keras.backend as K
 from keras.layers import Lambda, regularizers, Average
-
-from keras.models import Model
 from keras.layers import Input, Conv2D, Conv1D, MaxPooling2D, GlobalMaxPooling2D, GlobalMaxPooling1D, MaxPooling1D
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import GRU
 from keras.layers.wrappers import Bidirectional, TimeDistributed
 from keras.layers.core import Dropout, Dense, Lambda, Masking
 from keras.layers import merge, Layer, Activation, Dot, Concatenate, Flatten, Lambda
-
 from keras.initializers import Identity,glorot_normal
 from keras import regularizers
-
 from keras import metrics
-
 from keras.utils import plot_model
 
-
-
 numSentencesPerDoc, numWordsPerSentence = x_train[0].shape[0], x_train[0].shape[1]
+print("Number of sentences and words:")
 print(numSentencesPerDoc, numWordsPerSentence)
-#print(x_train[0])
 
 vocabSize, embeddingSize = embWeights.shape[0], embWeights.shape[1]
 print(vocabSize, embeddingSize)
 
-dropWordEmb = 0.25
-recursiveClass = GRU
-
-filters = 1 #embeddingSize*2
-windowMin = 3
-windowMax = 7
-# dimOfSentimentMetrics = 5
+#Hyperparameters
+filters = 1 
+windowMin = 2
+windowMax = 6
 batch_size = 256
 epochs = 25
 numGRU = 100
 numDensePool=50
 dr= 0.5
 
-##
-
-#wordsInputs = Input(shape=(numWordsPerSentence,1), batch_shape=(numSentencesPerDoc,numWordsPerSentence,), dtype='int32', name='words_input')
+## Layer Declaration
 
 x_in = Input( shape = ( numSentencesPerDoc, numWordsPerSentence ) , name='Input' )
-#x_pop = Lambda( lambda x: x, output_shape=(numWordsPerSentence, ) , name='convert_shape' )( x_in )
-    
-#Layer functionの定義
 embLayer = Embedding( input_dim=embWeights.shape[0], output_dim=embWeights.shape[1], weights=[embWeights]
                       ,mask_zero=True , trainable=True, embeddings_regularizer=regularizers.l2(0.0000001)
                       , input_length=numWordsPerSentence, name='Embedding' )
-
 
 maxPooledPerDoc = []
 convNets = []
@@ -109,18 +93,13 @@ for i in range(numSentencesPerDoc):
     for j in range(windowMax-windowMin):   
         emb = embLayer(x_pop)
         emb = Dropout(dr)(emb)
-        reshaped = extraDimLayer(emb)#Lambda(lambda x: K.expand_dims(x), name='extraDimForConvo_'+str(j)+'_sentence_'+str(i))(emb)
+        reshaped = extraDimLayer(emb)
         name='word_mat_convo_win_size_'+str(j)+'_sentence_'+str(i)
-        # wordsCNN = Conv2D(filters, kernel_size=(windowSize,embeddingSize), padding='valid', 
-        #                    activation='relu', strides=1, use_bias=True, input_shape=(numWordsPerSentence, embeddingSize, 1), data_format="channels_last",
-        #                    kernel_initializer=glorot_normal(),kernel_regularizer=regularizers.l2(),name=name)(reshaped)
+
         wordsCNN  = convNets[j](reshaped)
         wordsCNN=Dropout(dr)(wordsCNN)
-        squeezed = squeezeThirdLayer(wordsCNN)#Lambda(lambda x: K.squeeze(x, 3), name='squeezeThirdLayer_'+str(j)+'_sentence_'+str(i))(wordsCNN)
-        # newShape = (-1, int(squeezed.shape[1])*int(squeezed.shape[2]))
-        # squeezed = Lambda(lambda x: K.reshape(x,shape=newShape), name ='squeezeDimForMaxPool'+str(i)+str(j))(squeezed)
+        squeezed = squeezeThirdLayer(wordsCNN)
         wordsCNNPooled=GlobalMaxPooling1D()(squeezed)
-        #wordsCNNPooled= MaxPooling1D(pool_size = int(squeezed.shape[1]), padding='valid')(squeezed)
         maxPooledPerSentence.append(wordsCNNPooled)
         
     mergedPoolForSentence = Concatenate(axis = 1)(maxPooledPerSentence)
@@ -130,7 +109,7 @@ for i in range(numSentencesPerDoc):
 
     maxPooledPerDoc.append(densePoolForSentence)
     
-#Naive Approach
+#Naive (Average) Approach
 averaged = Average()(maxPooledPerDoc) 
 averaged = Lambda(lambda x:K.reshape(x,shape=(-1,int(averaged.shape[1])*int(averaged.shape[2]))), name ='attend_output')(averaged)
 out_avg = Dense(1, activation='sigmoid', use_bias=True)(averaged) 
@@ -141,7 +120,7 @@ biRnn_ = Bidirectional(GRU(int(mergedPoolPerDoc.shape[2]),  return_sequences=Tru
 newShape = (-1, int(mergedPoolPerDoc.shape[1]), 2*int(mergedPoolPerDoc.shape[2]))
 biRnn = Lambda(lambda x: K.reshape(x,shape=newShape), name ='biRnn_TF_Reminder')(biRnn_)
 
-CONTEXT_DIM = 100#int(int(biRnn.shape[1])*int(biRnn.shape[2])/2) 
+CONTEXT_DIM = 100
 
 eij = Dense(CONTEXT_DIM, use_bias=True, activation='tanh')(biRnn)
 eij = Dense(CONTEXT_DIM, use_bias=False, activation='softmax')(eij)
@@ -154,7 +133,7 @@ out = Dense(1, activation='sigmoid', use_bias=True)(weighted_input)
 
 
 
-##
+## Model with Attention
 
 model = Model(input=[x_in], output=[out])
 # adadelta = keras.optimizers.Adadelta(lr=0.5, rho=0.95, epsilon=None, decay=0.0)
@@ -167,24 +146,24 @@ model.compile(loss='binary_crossentropy',
               metrics=['accuracy'])
 
 print("Attention Model Build Complete")
-##
+
+## Model without Attention
 model_avg = Model(inputs=[x_in], outputs=[out_avg])
 model_avg.compile(loss='binary_crossentropy',
               optimizer=keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0),
               metrics=['accuracy'])
 
 print("Average Model Build Complete")
-##
-#save model to png file
+
+## Save model to png file
 from keras.utils import plot_model
 plot_model( model, to_file='model.png' )
 
-#モデルを保存せず直接可視化
 from IPython.display import SVG
 from keras.utils.vis_utils import model_to_dot
 SVG( model_to_dot( model ).create( prog='dot', format='svg' ) )
 
-##
+## Training
 print('Train...')
 history = model.fit(x_train, y_train, batch_size = batch_size, verbose=1, epochs=epochs
                     ,validation_split=0.2, shuffle=True)
