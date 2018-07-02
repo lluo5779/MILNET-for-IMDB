@@ -2,6 +2,9 @@ import os
 import string
 from numpy import loadtxt
 from keras.preprocessing.text import Tokenizer,text_to_word_sequence
+from keras.preprocessing.sequence import pad_sequences
+
+from collections import Counter
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -9,6 +12,8 @@ import sys, os
 sys.path.append(os.pardir)
 import glob
 import numpy as np
+
+
 from multiprocessing import Pool
 import multiprocessing as multi
 sys.path.append(os.pardir)
@@ -40,6 +45,7 @@ import gensim
 # save_path = '/home/dl-box/デスクトップ/PythonFile/hirose/LSTM/W2I/'
 
 
+
 ##
 
 def wrapper_func_six(tuple_data):
@@ -56,12 +62,14 @@ def tokenizeListOfTexts(list, vocab):
         if word in vocab:
             idx.append(vocab[word].index)
             #print(word)
+        #DEBUG CODE:
+        # idx.append(len(word))
         # else:
         #     print(word)
     return idx
 
 
-def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, save_name=None, willReturn = True):
+def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, save_name=None, willReturn = True, max_sent_len = 15,max_doc_len = 6):
     
     if (willReturn == False) and (all(v is None for v in [load_path, load_name, save_path, save_name])):
         raise ValueError('Function Arguments cannot all be None Type when saving files')
@@ -78,39 +86,105 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
     cleaned_all=[]
     idx_binary = [] # index for binary training only
     doc_count = 0
+    sent_counter = -1
     
     for i in range(len(lines)):
+        
+        
+        if i == 4:
+            pass
+        
+        
+        sent_counter += 1
+        
         cleaned = lines[i].replace('\n','').replace('<s>','').replace("'",'')
         cleaned = text_to_word_sequence(cleaned)
         
-        
-        if (len(cleaned) == 2): # and (i != 0):
-            if not (cleaned[0].isalpha() or cleaned[1].isalpha()):
-                score = int(cleaned[0])
-                id = int(cleaned[1])
-                if (score<=4) or (score>=7):
-                    idx_binary.append(doc_count)
-                filtered_doc = list(filter(None, cleaned_doc))
-                scores.append(score)
-                ids.append(id)
-                cleaned_all.append(filtered_doc)
-                cleaned_doc=[]
-                doc_count += 1
-                continue
-        
-        tokenized=tokenizeListOfTexts(cleaned, vocab)
-        
-        if (i%10000 == 0) and (i!=0):
+        if (sent_counter < max_doc_len):
+
+            if (len(cleaned) == 0):
+                while (sent_counter < max_doc_len):
+                    tokenized = [0]
+                    cleaned_doc.append(tokenized)
+                    sent_counter += 1
+            
+            elif (len(cleaned) == 2): # and (i != 0):
+                if  (cleaned[0].isnumeric() and cleaned[1].isnumeric()):
+                    
+                    score = int(cleaned[0])
+                    id = int(cleaned[1])
+                    scores.append(score)
+                    ids.append(id)
+                    
+                    if (score<=4) or (score>=7):
+                        idx_binary.append(doc_count)
+                    
+                    if (i != 0):
+                        filtered_doc = list(filter(None, cleaned_doc))
+                        padded_doc = pad_sequences(filtered_doc, maxlen=max_sent_len)
+                        
+                        cleaned_all.append(padded_doc.tolist())
+                        cleaned_doc=[]
+                        doc_count += 1
+                        sent_counter = 0
+                   
+                    continue
+            
+            tokenized=tokenizeListOfTexts(cleaned, vocab)
+            cleaned_doc.append(tokenized)
+        else: 
+            if (len(cleaned) == 2): # and (i != 0):
+                if  (cleaned[0].isnumeric() and cleaned[1].isnumeric()):
+                    
+                    score = int(cleaned[0])
+                    id = int(cleaned[1])
+                    scores.append(score)
+                    ids.append(id)
+                    
+                    if (score<=4) or (score>=7):
+                        idx_binary.append(doc_count)
+                    
+                    if (i != 0):
+                        filtered_doc = list(filter(None, cleaned_doc))
+                        padded_doc = pad_sequences(filtered_doc, maxlen=max_sent_len)
+                        
+                        cleaned_all.append(padded_doc.tolist())
+                        cleaned_doc=[]
+                        doc_count += 1
+                        
+                    sent_counter = 0
+                    continue
+            
+            
+        if (i%100 == 0) and (i!=0):
             print(str(i)+' out of' + str(length))
+            #DEBUG CODE
             break
             # print(cleaned_lines[i-500:i])
     
-        cleaned_doc.append(tokenized)
-        # cleaned_doc = cleaned_doc[0]
+    # Append the last doc 
     
+    while (sent_counter < max_doc_len):
+        tokenized = [0]
+        cleaned_doc.append(tokenized)
+        sent_counter += 1
+        
+    filtered_doc = list(filter(None, cleaned_doc))
+    padded_doc = pad_sequences(filtered_doc, maxlen=max_sent_len)
+    
+    cleaned_all.append(padded_doc.tolist())
+        
+        # cleaned_doc = cleaned_doc[0]
+    # 
+    # del cleaned_all[0]
+    # del scores[0]
+    # del idx_binary[0]
+    # del ids[0]
     features = np.asarray(cleaned_all)
     labels = np.asarray(scores)
     idx = np.asarray(idx_binary)
+    
+   
     
     if (willReturn == True):
         print('cleanAndTokenizeEDUs Returned and Done')
@@ -120,38 +194,63 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
         np.save(save_path + save_name + '_labels' + '.npy', labels)
         np.save(save_path + save_name + '_idx_binary_only' + '.npy', idx)
         np.save(save_path + save_name + '_doc_ids' + '.npy', ids)
-        print('cleanAndTokenizeEDUs Saved and Done')
+        print(save_name + ' cleanAndTokenizeEDUs Saved and Done')
+
+dir = '/home/louis/SharedWindows/edu_data/'  
+
+# def getWordIndices()
+# t = Tokenizer()
+
+# tokenized = t.fit_on_texts(cleaned)
+
+        
+        ##
 
 dir = '/home/louis/SharedWindows/edu_data/'  
   
 # t = Tokenizer()
 
 # tokenized = t.fit_on_texts(cleaned)
-
-
 if __name__ == '__main__':
     #data=(関数, 引数)
     isReload = int(input("Type 1 to initiate reload of google word2vec: "))
     
     if isReload:
-        model_word2vec_temp = gensim.models.KeyedVectors.load_word2vec_format('/home/louis/SharedWindows/GoogleNews-vectors-negative300.bin', binary=True)  
+        model_word2vec_temp = gensim.models.KeyedVectors.load_word2vec_format('/home/owner/デスクトップ/milnet+edu/GoogleNews-vectors-negative300.bin', binary=True)  
         model_word2vec = model_word2vec_temp
+        vocab = model_word2vec.vocab
+    else:
+        # For Debug Purposes
+        isCounter = int(input("Type 1 to initiate Counter: "))
+        if isCounter:
+            model_word2vec = Counter()
+            vocab = Counter()
+            
 
     print('word2vec model loaded')
 
-    load_path = '/home/louis/SharedWindows/edu_data/'  
-    save_path = '/home/louis/SharedWindows/edu_data/Preprocessed/'
+    load_path = '/home/louis/SharedWindows/edu_data/'#'/home/owner/デスクトップ/milnet+edu/data/'  
+    save_path = '/home/louis/SharedWindows/edu_data/Preprocessed/'#'/home/owner/デスクトップ/milnet+edu/data/Preprocessed/'
       
-    load_name = ['imdb-edus.train', 'imdb-edus.test']
-    save_name = ['train','test']
+    load_name = ['imdb-edus.train', 'imdb-edus.test','imdb-edus.dev']
+    save_name = ['train_data','test_data','validation_data']
     
     willReturn = False
     
     # cleanAndTokenizeEDUs(model_word2vec.vocab, load_path=load_path, load_name = 'imdb-edus.train', save_path=save_path,save_name=save_name[0], willReturn = False)
-    # features, scores, idx, ids = cleanAndTokenizeEDUs(model_word2vec.vocab, load_path=load_path, load_name = 'imdb-edus.train', save_path=save_path,save_name=save_name[0], willReturn = False)
+    features, scores, idx, ids = cleanAndTokenizeEDUs(vocab, load_path=load_path, load_name = 'imdb-edus.train', save_path=save_path,save_name=save_name[0], willReturn = True)
     
-    vocab = model_word2vec.vocab
+    ##
+    
+    
     data = [ ( cleanAndTokenizeEDUs, vocab, load_path, load_name[i], save_path, save_name[i] , willReturn) for i in range( len(load_name) ) ]
     with Pool( multi.cpu_count()-1 ) as p:
         p.map( wrapper_func_six, data )
+        
+    print('All Done')
 
+##
+for i in range(len(cleaned_all)):
+    print(i)
+    for j in range(len(cleaned_all[i])):
+        print(j)
