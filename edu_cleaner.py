@@ -63,9 +63,12 @@ def tokenizeListOfTexts(list, vocab):
             idx.append(vocab[word].index)
             #print(word)
         #DEBUG CODE:
-        # idx.append(len(word))
+        if word != 'when':
+            idx.append(len(word))
         # else:
         #     print(word)
+    if idx == []:
+        idx.append(0)
     return idx
 
 
@@ -91,7 +94,8 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
     for i in range(len(lines)):
         
         
-        if i == 4:
+        if i == 5:
+            a = 1
             pass
         
         
@@ -135,6 +139,7 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
         else: 
             if (len(cleaned) == 2): # and (i != 0):
                 if  (cleaned[0].isnumeric() and cleaned[1].isnumeric()):
+                    #print(i)
                     
                     score = int(cleaned[0])
                     id = int(cleaned[1])
