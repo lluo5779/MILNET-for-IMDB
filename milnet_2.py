@@ -43,6 +43,8 @@ from keras.initializers import Identity,glorot_normal
 from keras import regularizers
 from keras import metrics
 from keras.utils import plot_model
+from keras.optimizers import Adam
+
 
 numSentencesPerDoc, numWordsPerSentence = x_train[0].shape[0], x_train[0].shape[1]
 print("Number of sentences and words:")
@@ -52,20 +54,21 @@ vocabSize, embeddingSize = embWeights.shape[0], embWeights.shape[1]
 print(vocabSize, embeddingSize)
 
 #Hyperparameters
-filters = 1 
-windowMin = 2
+filters = 10 
+windowMin = 3
 windowMax = 6
 batch_size = 256
-epochs = 25
+epochs = 100
 numGRU = 100
 numDensePool=50
 dr= 0.5
+
 
 ## Layer Declaration
 
 x_in = Input( shape = ( numSentencesPerDoc, numWordsPerSentence ) , name='Input' )
 embLayer = Embedding( input_dim=embWeights.shape[0], output_dim=embWeights.shape[1], weights=[embWeights]
-                      ,mask_zero=True , trainable=True, embeddings_regularizer=regularizers.l2(0.0000001)
+                      ,mask_zero=False , trainable=True, embeddings_regularizer=regularizers.l2(0.0000001)
                       , input_length=numWordsPerSentence, name='Embedding' )
 
 maxPooledPerDoc = []
@@ -73,13 +76,14 @@ convNets = []
 maxPools = []
 
 extraDimLayer = Lambda(lambda x: K.expand_dims(x), name='extraDimForConvo')
-squeezeThirdLayer = Lambda(lambda x: K.squeeze(x, 3), name='squeezeThirdLayer')
+squeezeSecondLayer = Lambda(lambda x: K.squeeze(x, 1), name='squeezeThirdLayer')
 
 for windowSize in range(windowMin,windowMax):
     name='word_mat_convo_win_size_'+str(windowSize)
-    convNet = Conv2D(filters, kernel_size=(windowSize,embeddingSize), padding='valid', 
-                           activation='relu', strides=1, use_bias=True, input_shape=(numWordsPerSentence, embeddingSize, 1), data_format="channels_last",
-                           kernel_initializer=glorot_normal(),kernel_regularizer=regularizers.l2(),name=name)
+    convNet = Conv1D(filters=filters, kernel_size=windowSize, padding='valid', activation='relu', strides=1)
+    # convNet = Conv2D(filters, kernel_size=(windowSize,embeddingSize), padding='valid', 
+    #                        activation='relu', strides=1, use_bias=True, input_shape=(numWordsPerSentence, embeddingSize, 1), data_format="channels_last",
+    #                        kernel_initializer=glorot_normal(),kernel_regularizer=regularizers.l2(),name=name)
     convNets.append(convNet)
     name='word_mat_max_pool_win_size_'+str(windowSize)
     maxPool = MaxPooling1D(pool_size = int(numWordsPerSentence-windowSize-1), padding='valid')
@@ -93,25 +97,28 @@ for i in range(numSentencesPerDoc):
     for j in range(windowMax-windowMin):   
         emb = embLayer(x_pop)
         emb = Dropout(dr)(emb)
-        reshaped = extraDimLayer(emb)
+        #reshaped = extraDimLayer(emb)
         name='word_mat_convo_win_size_'+str(j)+'_sentence_'+str(i)
 
-        wordsCNN  = convNets[j](reshaped)
-        wordsCNN=Dropout(dr)(wordsCNN)
-        squeezed = squeezeThirdLayer(wordsCNN)
-        wordsCNNPooled=GlobalMaxPooling1D()(squeezed)
+        wordsCNN  = convNets[j](emb)
+        # wordsCNN = Dropout(dr)(wordsCNN)
+        # squeezed = squeezeThirdLayer(wordsCNN)
+        wordsCNNPooled=MaxPooling1D(pool_size=2, name='maxpool_over_words'+str(j)+str(i))(wordsCNN) #COULD BE GLOBALMAXPOOLING1D
+        wordsCNNPooled=Flatten(name='flat_over_words_'+str(j)+str(i))(wordsCNNPooled)
         maxPooledPerSentence.append(wordsCNNPooled)
         
     mergedPoolForSentence = Concatenate(axis = 1)(maxPooledPerSentence)
-    newShape=(-1,1,int(mergedPoolForSentence.shape[1]))
-    reshapedPoolForSentence = Lambda(lambda x: K.reshape(x,shape=newShape), name ='switch_axis_'+'sentence'+str(i+1)+'winSize'+str(j+windowMin))(mergedPoolForSentence)
-    densePoolForSentence = Dense(numDensePool, activation='softmax', use_bias=True)(reshapedPoolForSentence)
 
-    maxPooledPerDoc.append(densePoolForSentence)
+    densePoolForSentence = Dense(numDensePool, activation='softmax', use_bias=True)(mergedPoolForSentence)
+    print(densePoolForSentence)
+    newShape=(-1,1,int(densePoolForSentence.shape[1]))#int(mergedPoolForSentence.shape[1]))
+    reshapedPoolForSentence = Lambda(lambda x: K.reshape(x,shape=newShape), name ='switch_axis_'+'sentence'+str(i+1)+'winSize'+str(j+windowMin))(densePoolForSentence)
+    maxPooledPerDoc.append(reshapedPoolForSentence)
     
 #Naive (Average) Approach
 averaged = Average()(maxPooledPerDoc) 
-averaged = Lambda(lambda x:K.reshape(x,shape=(-1,int(averaged.shape[1])*int(averaged.shape[2]))), name ='attend_output')(averaged)
+# averaged = Flatten()(averaged)#Lambda(lambda x:K.reshape(x,shape=(-1,int(averaged.shape[1])*int(averaged.shape[2]))), name ='attend_output')(averaged)
+
 out_avg = Dense(1, activation='sigmoid', use_bias=True)(averaged) 
     
 #Apply Attention 
@@ -142,7 +149,7 @@ model = Model(input=[x_in], output=[out])
 #               metrics=['accuracy'])
               
 model.compile(loss='binary_crossentropy',
-              optimizer=keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.99, epsilon=1e-08, decay=0.0),
+              optimizer=Adam(lr=0.0001, beta_1=0.9, beta_2=0.99, epsilon=1e-08, decay=0.0),
               metrics=['accuracy'])
 
 print("Attention Model Build Complete")
@@ -150,7 +157,7 @@ print("Attention Model Build Complete")
 ## Model without Attention
 model_avg = Model(inputs=[x_in], outputs=[out_avg])
 model_avg.compile(loss='binary_crossentropy',
-              optimizer=keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0),
+              optimizer=Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0),
               metrics=['accuracy'])
 
 print("Average Model Build Complete")
@@ -166,7 +173,7 @@ SVG( model_to_dot( model ).create( prog='dot', format='svg' ) )
 ## Training
 print('Train...')
 history = model.fit(x_train, y_train, batch_size = batch_size, verbose=1, epochs=epochs
-                    ,validation_split=0.2, shuffle=True)
+                    ,validation_data=(x_test, y_test), shuffle=True)
                     
                     
                     
