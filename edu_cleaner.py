@@ -161,10 +161,10 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
                     continue
             
             
-        if (i%100 == 0) and (i!=0):
+        if (i%100000 == 0) and (i!=0):
             print(str(i)+' out of' + str(length))
             #DEBUG CODE
-            break
+            #break
             # print(cleaned_lines[i-500:i])
     
     # Append the last doc 
