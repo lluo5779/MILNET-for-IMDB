@@ -94,7 +94,7 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
     for i in range(len(lines)):
         
         
-        if i == 5:
+        if i == 92:
             a = 1
             pass
         
@@ -111,6 +111,9 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
                     tokenized = [0]
                     cleaned_doc.append(tokenized)
                     sent_counter += 1
+                    if(sent_counter<max_doc_len):
+                        sent_counter-=1
+                        break
             
             elif (len(cleaned) == 2): # and (i != 0):
                 if  (cleaned[0].isnumeric() and cleaned[1].isnumeric()):
@@ -161,11 +164,15 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
                     continue
             
             
-        if (i%100000 == 0) and (i!=0):
+        if (i%1000000 == 0) and (i!=0):
             print(str(i)+' out of' + str(length))
+            break
             #DEBUG CODE
             #break
             # print(cleaned_lines[i-500:i])
+            
+        if (len(cleaned_all)==90):
+            a = 2
     
     # Append the last doc 
     
@@ -244,7 +251,11 @@ if __name__ == '__main__':
     
     # cleanAndTokenizeEDUs(model_word2vec.vocab, load_path=load_path, load_name = 'imdb-edus.train', save_path=save_path,save_name=save_name[0], willReturn = False)
     features, scores, idx, ids = cleanAndTokenizeEDUs(vocab, load_path=load_path, load_name = 'imdb-edus.train', save_path=save_path,save_name=save_name[0], willReturn = True)
-    
+    ##
+for i in range(len(features)):
+    if len(features[i])!=6:   
+        print('i: '+str(i)+' ;;;;;;;;;;;;;')
+        print(len(features[i]))
     ##
     
     
