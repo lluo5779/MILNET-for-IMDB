@@ -2,9 +2,6 @@ import os
 import string
 from numpy import loadtxt
 from keras.preprocessing.text import Tokenizer,text_to_word_sequence
-from keras.preprocessing.sequence import pad_sequences
-
-from collections import Counter
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -12,8 +9,6 @@ import sys, os
 sys.path.append(os.pardir)
 import glob
 import numpy as np
-
-
 from multiprocessing import Pool
 import multiprocessing as multi
 sys.path.append(os.pardir)
@@ -45,7 +40,6 @@ import gensim
 # save_path = '/home/dl-box/デスクトップ/PythonFile/hirose/LSTM/W2I/'
 
 
-
 ##
 
 def wrapper_func_six(tuple_data):
@@ -62,14 +56,10 @@ def tokenizeListOfTexts(list, vocab):
         if word in vocab:
             idx.append(vocab[word].index)
             #print(word)
-        #DEBUG CODE:
-        if word != 'when':
-            idx.append(len(word))
         # else:
         #     print(word)
-    if idx == []:
-        idx.append(0)
     return idx
+
 
 
 def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, save_name=None, willReturn = True, max_sent_len = 15,max_doc_len = 6):
@@ -94,8 +84,12 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
     for i in range(len(lines)):
         
         
+
         if i == 92:
             a = 1
+
+        if i == 4:
+
             pass
         
         
@@ -142,7 +136,6 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
         else: 
             if (len(cleaned) == 2): # and (i != 0):
                 if  (cleaned[0].isnumeric() and cleaned[1].isnumeric()):
-                    #print(i)
                     
                     score = int(cleaned[0])
                     id = int(cleaned[1])
@@ -163,12 +156,13 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
                     sent_counter = 0
                     continue
             
-            
-        if (i%1000000 == 0) and (i!=0):
+
+        if (i%100 == 0) and (i!=0):
+
             print(str(i)+' out of' + str(length))
             break
             #DEBUG CODE
-            #break
+            break
             # print(cleaned_lines[i-500:i])
             
         if (len(cleaned_all)==90):
@@ -206,50 +200,35 @@ def cleanAndTokenizeEDUs(vocab, load_path=None, load_name=None, save_path=None, 
         np.save(save_path + save_name + '_labels' + '.npy', labels)
         np.save(save_path + save_name + '_idx_binary_only' + '.npy', idx)
         np.save(save_path + save_name + '_doc_ids' + '.npy', ids)
-        print(save_name + ' cleanAndTokenizeEDUs Saved and Done')
-
-dir = '/home/louis/SharedWindows/edu_data/'  
-
-# def getWordIndices()
-# t = Tokenizer()
-
-# tokenized = t.fit_on_texts(cleaned)
-
-        
-        ##
+print(save_name + ' cleanAndTokenizeEDUs Saved and Done')
 
 dir = '/home/louis/SharedWindows/edu_data/'  
   
 # t = Tokenizer()
 
 # tokenized = t.fit_on_texts(cleaned)
+
+
 if __name__ == '__main__':
     #data=(関数, 引数)
     isReload = int(input("Type 1 to initiate reload of google word2vec: "))
     
     if isReload:
-        model_word2vec_temp = gensim.models.KeyedVectors.load_word2vec_format('/home/owner/デスクトップ/milnet+edu/GoogleNews-vectors-negative300.bin', binary=True)  
+        model_word2vec_temp = gensim.models.KeyedVectors.load_word2vec_format('/home/louis/SharedWindows/GoogleNews-vectors-negative300.bin', binary=True)  
         model_word2vec = model_word2vec_temp
-        vocab = model_word2vec.vocab
-    else:
-        # For Debug Purposes
-        isCounter = int(input("Type 1 to initiate Counter: "))
-        if isCounter:
-            model_word2vec = Counter()
-            vocab = Counter()
-            
 
     print('word2vec model loaded')
 
-    load_path = '/home/louis/SharedWindows/edu_data/'#'/home/owner/デスクトップ/milnet+edu/data/'  
-    save_path = '/home/louis/SharedWindows/edu_data/Preprocessed/'#'/home/owner/デスクトップ/milnet+edu/data/Preprocessed/'
+    load_path = '/home/louis/SharedWindows/edu_data/'  
+    save_path = '/home/louis/SharedWindows/edu_data/Preprocessed/'
       
-    load_name = ['imdb-edus.train', 'imdb-edus.test','imdb-edus.dev']
-    save_name = ['train_data','test_data','validation_data']
+    load_name = ['imdb-edus.train', 'imdb-edus.test']
+    save_name = ['train','test']
     
     willReturn = False
     
     # cleanAndTokenizeEDUs(model_word2vec.vocab, load_path=load_path, load_name = 'imdb-edus.train', save_path=save_path,save_name=save_name[0], willReturn = False)
+
     features, scores, idx, ids = cleanAndTokenizeEDUs(vocab, load_path=load_path, load_name = 'imdb-edus.train', save_path=save_path,save_name=save_name[0], willReturn = True)
     ##
 for i in range(len(features)):
@@ -258,15 +237,10 @@ for i in range(len(features)):
         print(len(features[i]))
     ##
     
-    
+    # features, scores, idx, ids = cleanAndTokenizeEDUs(model_word2vec.vocab, load_path=load_path, load_name = 'imdb-edus.train', save_path=save_path,save_name=save_name[0], willReturn = False)
+
+    vocab = model_word2vec.vocab
     data = [ ( cleanAndTokenizeEDUs, vocab, load_path, load_name[i], save_path, save_name[i] , willReturn) for i in range( len(load_name) ) ]
     with Pool( multi.cpu_count()-1 ) as p:
         p.map( wrapper_func_six, data )
-        
-    print('All Done')
 
-##
-for i in range(len(cleaned_all)):
-    print(i)
-    for j in range(len(cleaned_all[i])):
-        print(j)
