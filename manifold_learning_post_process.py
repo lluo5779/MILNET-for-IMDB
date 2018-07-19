@@ -2,6 +2,7 @@ import sklearn.manifold as mani
 import numpy as np
 import collections
 
+import sklearn.datasets as ds
 
 ## Sample Window Acquisition
 window_start = 1
@@ -49,3 +50,37 @@ def replace_matched_items(docs, dictionary):
     return new_list
 
 list_ = replace_matched_items(x_train.tolist(), collections.Counter())
+
+##datasets.samples_generator.make_friedman3(n_points, random_state=0)
+n_neighbors = 50
+n_components = 2
+n_points = 1000
+
+
+X, color = ds.samples_generator.make_s_curve(n_points, random_state=0)
+Isomap = mani.Isomap(n_neighbors = n_neighbors, n_components=n_components)
+LLE = mani.LocallyLinearEmbedding(n_neighbors = n_neighbors, n_components=n_components)
+
+#s_ISOMAP = Isomap.fit(s_shaped)
+#s_LLE = LLE(s_shaped)
+
+import matplotlib.pyplot as plt
+
+fig = plt.figure(figsize=(15, 8))
+plt.suptitle("Manifold Learning with %i points, %i neighbors"
+             % (1000, n_neighbors), fontsize=14)
+
+Y = Isomap.fit_transform(X)
+ax = fig.add_subplot(257)
+plt.scatter(Y[:, 0], Y[:, 1], c=color, cmap=plt.cm.Spectral)
+# 
+# ax.xaxis.set_major_formatter(NullFormatter())
+# ax.yaxis.set_major_formatter(NullFormatter())
+plt.axis('tight')
+plt.show()
+
+
+
+
+
+
