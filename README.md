@@ -9,5 +9,5 @@ Author: Yiqing (Louis) Luo
 
 Reference: Angelidis and Lapata 2017 ACL Conference
 
-Highest Accuracy Achieved: 86.4738 on 20% test set randomly selected
+Highest Accuracy Achieved: 89.47% on 20% test set randomly selected
 
