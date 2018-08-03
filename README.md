@@ -1,4 +1,4 @@
-## Model: Multiple Instance Learning Network
+## Model: Multiple Instance Learning Network (MILNET)
 
 Data: IMDB data from http://ai.stanford.edu/~amaas/data/sentiment/ 
 
