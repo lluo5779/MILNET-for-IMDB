@@ -7,7 +7,11 @@ Embedding Weights: GLOVE from http://nlp.stanford.edu/data/glove.6B.zip
 
 Author: Yiqing (Louis) Luo
 
-Reference: Angelidis and Lapata 2017 ACL Conference
+Reference: Angelidis and Lapata 2018 ACL Conference
+
+Link: http://aclweb.org/anthology/Q18-1002
 
 Highest Accuracy Achieved: 89.47% on 20% test set randomly selected
+
+Documentations Coming Soon
 
